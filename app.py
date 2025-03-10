@@ -1,6 +1,104 @@
 import streamlit as st
+import re
+import tempfile
+import os
 
-# Existing opcode_map and registers definitions
+# Set page configuration
+st.set_page_config(
+    page_title="SIMPLE RISC CONVERTER",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# Custom CSS for whiteish theme
+st.markdown("""
+    <style>
+        body {
+            background-color: #f5f5f5;
+            color: #333333;
+        }
+        .stApp {
+            background-color: #f5f5f5;
+            color: #333333;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        h1 {
+            color: #333333;
+            font-size: 2.5em;
+            letter-spacing: 1px;
+            text-align: center;
+        }
+        .subtitle {
+            color: #666666;
+            text-align: center;
+            margin-top: -10px;
+            margin-bottom: 20px;
+        }
+        .instructions {
+            background-color: #ffffff;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #dddddd;
+        }
+        .instructions h3 {
+            margin-top: 0;
+            color: #333333;
+        }
+        .stButton button {
+            background-color: #4CAF50;
+            color: white;
+            font-weight: bold;
+            border: none;
+        }
+        .stButton button:hover {
+            background-color: #45a049;
+        }
+        .section {
+            border: 1px solid #dddddd;
+            padding: 25px;
+            border-radius: 8px;
+            background-color: #ffffff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 2px;
+            background-color: #eeeeee;
+        }
+        .stTabs [data-baseweb="tab"] {
+            background-color: #dddddd;
+            color: #333333;
+            border-radius: 4px 4px 0 0;
+            padding: 10px 20px;
+            border: none;
+        }
+        .stTabs [aria-selected="true"] {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .stTextArea textarea {
+            background-color: #ffffff;
+            color: #333333;
+        }
+        .stFileUploader label {
+            color: #333333;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+# Header
+st.markdown("<h1>SIMPLE RISC CONVERTER</h1>", unsafe_allow_html=True)
+st.markdown("<p class='subtitle'>Convert your assembly code to binary format for RISC architecture</p>", unsafe_allow_html=True)
+
+# Instructions section
+st.markdown("""
+<div class="instructions">
+    <h3>Instructions</h3>
+    <p>Enter your RISC assembly code or upload an .asm file to convert it to binary format. The converter supports all standard RISC instructions and will validate your syntax.</p>
+</div>
+""", unsafe_allow_html=True)
+
+# Your existing assembler code
 opcode_map = {
     "add": "00000", "sub": "00001", "mul": "00010", "div": "00011", "mod": "00100",
     "cmp": "00101", "and": "00110", "or": "00111", "not": "01000", "mov": "01001",
@@ -9,29 +107,39 @@ opcode_map = {
     "ret": "10100", "hlt": "11111",
 }
 
-registers = {f"r{i}": i for i in range(16)}  # r0 to r15 mapped dynamically
+def parse_instruction(line1, address, labels_dict):
+    if ':' in line1:
+        a = line1.find(":")
+        line = line1[a+1:]
+    else:
+        line = line1    
 
-def parse_instruction(line):
-    parts = line.strip().replace(",", " ").split()  # To remove commas
+    parts = [x.strip() for x in re.split(r"[\s,]+", line) if x] # Remove commas and spaces
     if not parts:
-        return "Error: Empty instruction line"
+        return None  # Skip lines that only contain a label
 
     instr = parts[0]  # First token is the instruction
 
     # Handle unsigned (u) or half-word (h) versions
-    is_unsigned = instr.endswith("u")
-    is_halfword = instr.endswith("h")
+    modifier = ''
+    if instr.endswith("u"):
+        modifier = 'u'
+    elif instr.endswith("h"):
+        modifier = 'h'
     base_instr = instr.rstrip("uh")  # Remove 'u' or 'h' suffix
 
     if base_instr not in opcode_map:
         return f"Error: Unknown instruction '{instr}' in line: {line}"
 
     opcode = opcode_map[base_instr]
+    registers = {f"r{i}": i for i in range(16)}  # r0 to r15 mapped dynamically
 
     # Ensure every return path provides a string
     if base_instr in ("add", "sub", "mul", "div", "mod", "and", "or", "lsl", "lsr", "asr"):
         if len(parts) < 4:
             return f"Error: Missing operands for instruction '{instr}' in line: {line}"
+        if len(parts) > 4:
+            return f"Error: Unexpected operands for instruction '{instr}' in line: {line}"
         if parts[1] not in registers or parts[2] not in registers:
             return f"Error: Invalid register(s) in '{instr}' in line: {line}"
 
@@ -45,9 +153,14 @@ def parse_instruction(line):
                 imm_val = int(parts[3])
             except ValueError:
                 return f"Error: Invalid immediate value '{parts[3]}' for '{instr}' in line: {line}"
-            return f"{opcode}1{rd:04b}{rs1:04b}00{imm_val:016b}"
+            if modifier=='u':
+                return f"{opcode}1{rd:04b}{rs1:04b}01{imm_val:016b}"
+            elif modifier=='h':
+                return f"{opcode}1{rd:04b}{rs1:04b}10{imm_val:016b}"
+            else:
+                return f"{opcode}1{rd:04b}{rs1:04b}00{imm_val:016b}"
 
-    if instr in ["nop", "ret","hlt"]:
+    if instr in ["nop", "ret", "hlt"]:
         if len(parts) > 1:
             return f"Error: Unexpected operands for '{instr}' in line: {line}"
         return f"{opcode}".ljust(32, '0')
@@ -55,95 +168,195 @@ def parse_instruction(line):
     if instr in ["call", "b", "beq", "bgt"]:
         if len(parts) < 2:
             return f"Error: Missing offset for branch instruction '{instr}' in line: {line}"
-        try:
-            offset = int(parts[1])  # Convert offset
-        except ValueError:
-            return f"Error: Invalid offset '{parts[1]}' for '{instr}' in line: {line}"
-
-        offset_bin = format(offset & 0x7FFFFFF, '027b')  # Ensure two's complement representation
-        return opcode + offset_bin
+        elif len(parts) > 2:
+            return f"Error: Unexpected operands for '{instr}' in line: {line}"
+        # Handle labels in branch instructions
+        if parts[1] in labels_dict:
+            offset = labels_dict[parts[1]] - address
+            return f"{opcode}{offset:027b}"
+        else:
+            try:
+                offset = int(parts[1])
+                return f"{opcode}{offset:027b}"
+            except ValueError:
+                return f"Error: Label '{parts[1]}' not found for branch instruction"
 
     if instr in ["cmp", "not", "mov"]:
         if len(parts) < 3:
             return f"Error: Missing operands for '{instr}' in line: {line}"
+        elif len(parts) > 3:
+            return f"Error: Unexpected operands for '{instr}' in line: {line}"
+        
+        if parts[1] not in registers:
+            return f"Error: Invalid register(s) in '{instr}' in line: {line}"
+        
         rd = registers[parts[1]]
         if parts[2] in registers:
             rs = registers[parts[2]]
-            return f"{opcode}0{rd:04b}0000{rs:04b}".ljust(32, '0')
+            return f"{opcode}00000{rd:04b}{rs:04b}".ljust(32, '0')
         else:
             try:
                 imm_val = int(parts[2])
             except ValueError:
                 return f"Error: Invalid immediate value '{parts[2]}' for '{instr}' in line: {line}"
-            return f"{opcode}1{rd:04b}000000{imm_val:016b}"
+            if modifier=='u':
+                return f"{opcode}10000{rd:04b}01{imm_val:016b}"
+            elif modifier=='h':
+                return f"{opcode}10000{rd:04b}10{imm_val:016b}"
+            
+            return f"{opcode}10000{rd:04b}00{imm_val:016b}"
 
     if instr in ["ld", "st"]:
         if len(parts) < 3:
             return f"Error: Missing operands for '{instr}' in line: {line}"
-
-        rd_or_rs2 = parts[1]
-        base_reg = parts[2]
-        a = base_reg.find("[")
-        b = base_reg.find("]")
-        if a == -1 or b == -1:
-            return f"Error: Invalid memory access format in '{instr}' in line: {line}"
-        base = base_reg[a+1:b]
-        if a == 0:
-            offset = 0
-        else:
-            try:
-                offset = int(base_reg[0:a])
-            except ValueError:
-                return f"Error: Invalid offset format in '{instr}' in line: {line}"
-
-        if rd_or_rs2 not in registers or base not in registers:
+        elif len(parts) > 3:
+            return f"Error: Unexpected operands for '{instr}' in line: {line}"
+        if parts[1] not in registers:
             return f"Error: Invalid register(s) in '{instr}' in line: {line}"
 
-        reg1 = registers[rd_or_rs2]
-        base1 = registers[base]
-
-        return f"{opcode}1{reg1:04b}{base1:04b}{offset:04b}".ljust(32, '0')
-
+        rd = registers[parts[1]]
+        rs2 = parts[2]
+        if rs2.startswith("["):
+            a = rs2.find("[")
+            b = rs2.find("]")
+            temp = rs2[a+1:b]
+            new_parts = [x.strip() for x in re.split(r"[\s,]+", temp) if x]
+            if new_parts[0] not in registers:
+                return f"Error: Invalid register(s) in '{instr}' in line: {line}"
+            rss1 = registers[new_parts[0]]
+            if new_parts[1] in registers:
+                return f"{opcode}0{rd:04b}{rss1:04b}{registers[new_parts[1]]:04b}".ljust(32, '0')
+            else:
+                return f"{opcode}1{rd:04b}{rss1:04b}{int(new_parts[1]):04b}".ljust(32, '0')
+        else:
+            a = rs2.find("[")
+            b = rs2.find("]")
+            rss1 = rs2[:a]
+            
+            if rs2[a+1:b] not in registers:
+                return f"Error: Invalid register(s) in '{instr}' in line: {line}"
+            rss2 = registers[rs2[a+1:b]]
+            
+            if rss1 in registers:
+                return f"{opcode}0{rd:04b}{rss2:04b}{registers[rss1]:04b}".ljust(32, '0')
+            else:
+                return f"{opcode}1{rd:04b}{rss2:04b}{int(rss1):04b}".ljust(32, '0')
     return f"Error: Unknown instruction '{instr}' in line: {line}"  # Ensure error return
 
-# Streamlit UI
-st.title("Assembly to Binary Converter")
+def assemble_from_string(asm_code):
+    labels_dict = {}
+    lines = asm_code.splitlines()
+    
+    # First pass: Identify labels and their addresses
+    address = 0
+    for line in lines:
+        if not line.strip():
+            continue  # Skip empty lines
+        
+        # Check if the line contains a label
+        if ":" in line:
+            a = line.find(":")
+            temp_label = line[:a].strip()  # Extract label without spaces
+            labels_dict[temp_label] = address  # Store label and address
+        
+        address += 1  # Increment address for each instruction
 
-# Text area for assembly code input
-assembly_code = st.text_area("Write your assembly code here:", height=300)
-
-# Button to trigger assembly
-if st.button("Assemble"):
-    if not assembly_code.strip():
-        st.error("Please enter some assembly code.")
-    else:
-        # Assemble the code
-        binary_output = []
-        errors = []
-        for line_number, line in enumerate(assembly_code.splitlines(), start=1):
-            if not line.strip():
-                continue  # Skip empty lines
-            binary_code = parse_instruction(line)
-            if binary_code.startswith("Error"):
-                errors.append(f"Error in line {line_number}: {line.strip()} → {binary_code}")
-            else:
-                binary_output.append(binary_code)
-
-        if errors:
-            for error in errors:
-                st.error(error)
-            st.error("Assembly stopped due to errors.")
+    # Second pass: Assemble instructions
+    result = []
+    address = 0
+    has_error = False
+    
+    for line_number, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue  # Skip empty lines
+        
+        binary_code = parse_instruction(line, address, labels_dict)
+        if binary_code is None:
+            continue  # Skip lines that only contain a label
+        
+        if binary_code.startswith("Error"):  # Error handling
+            result.append(f"Error in line {line_number}: {line.strip()} → {binary_code}")
+            has_error = True
         else:
-            st.success("Assembly completed successfully!")
-            binary_result = "\n".join(binary_output)
+            result.append(binary_code)
+            address += 1  # Increment address for each instruction
+    
+    return result, has_error
 
-            # Display binary output
-            st.text_area("Binary Output:", binary_result, height=300)
+# Input method tabs
+tab1, tab2 = st.tabs(["Enter Assembly Code", "Upload ASM File"])
 
-            # Provide binary output as a downloadable file
-            st.download_button(
-                label="Download Binary File",
-                data=binary_result,
-                file_name="output.bin",
-                mime="application/octet-stream"
-            )
+with tab1:
+    default_code = """Example:
+    mov r1, 10
+    mov r2, 20
+    add r3, r1, r2
+    hlt"""
+    
+    asm_code = st.text_area("", 
+                           placeholder=default_code, 
+                           height=300)
+    
+    if st.button("Convert to Binary", key="convert_text"):
+        if asm_code:
+            binary_lines, has_error = assemble_from_string(asm_code)
+            if has_error:
+                st.error("Errors found during assembly:")
+                for line in binary_lines:
+                    st.text(line)
+            else:
+                binary_content = '\n'.join(binary_lines)
+                
+                # Create temporary file for download
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.bin', mode='w') as tmp_file:
+                    tmp_file.write(binary_content)
+                    tmp_path = tmp_file.name
+                
+                with open(tmp_path, 'rb') as f:
+                    binary_data = f.read()
+                
+                st.download_button(
+                    label="Download Binary File",
+                    data=binary_data,
+                    file_name="output.bin",
+                    mime="application/octet-stream"
+                )
+                
+                st.success("Assembly successful! Click the button above to download the binary file.")
+                st.code(binary_content, language="text")
+        else:
+            st.warning("Please enter some assembly code.")
+
+with tab2:
+    uploaded_file = st.file_uploader("Upload an ASM file", type=["asm", "txt"])
+    
+    if uploaded_file is not None:
+        asm_code = uploaded_file.getvalue().decode("utf-8")
+        st.text_area("File Content", asm_code, height=300)
+        
+        if st.button("Convert to Binary", key="convert_file"):
+            binary_lines, has_error = assemble_from_string(asm_code)
+            if has_error:
+                st.error("Errors found during assembly:")
+                for line in binary_lines:
+                    st.text(line)
+            else:
+                binary_content = '\n'.join(binary_lines)
+                
+                # Create temporary file for download
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.bin', mode='w') as tmp_file:
+                    tmp_file.write(binary_content)
+                    tmp_path = tmp_file.name
+                
+                with open(tmp_path, 'rb') as f:
+                    binary_data = f.read()
+                
+                st.download_button(
+                    label="Download Binary File",
+                    data=binary_data,
+                    file_name="output.bin",
+                    mime="application/octet-stream"
+                )
+                
+                st.success("Assembly successful! Click the button above to download the binary file.")
+                st.code(binary_content, language="text")
