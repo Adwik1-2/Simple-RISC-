@@ -83,6 +83,11 @@ st.markdown("""
         .stFileUploader label {
             color: #333333;
         }
+        /* Custom CSS for error messages */
+        .error-message {
+            color: #ff0000;  /* Red color for error messages */
+            font-weight: bold;
+        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -234,12 +239,6 @@ def parse_instruction(line1, address, labels_dict):
             
             return f"{opcode}1{rd:04b}000000{imm_val:016b}"
 
-
-
-
-
-
-
     if instr in ["ld", "st"]:
         if len(parts) < 3:
             return f"Error: Missing operands for '{instr}' in line: {line}"
@@ -335,9 +334,9 @@ with tab1:
         if asm_code:
             binary_lines, has_error = assemble_from_string(asm_code)
             if has_error:
-                st.error("Errors found during assembly:")
+                st.markdown("<div class='error-message'>Errors found during assembly:</div>", unsafe_allow_html=True)
                 for line in binary_lines:
-                    st.text(line)
+                    st.markdown(f"<div class='error-message'>{line}</div>", unsafe_allow_html=True)
             else:
                 binary_content = '\n'.join(binary_lines)
                 
@@ -371,9 +370,9 @@ with tab2:
         if st.button("Convert to Binary", key="convert_file"):
             binary_lines, has_error = assemble_from_string(asm_code)
             if has_error:
-                st.error("Errors found during assembly:")
+                st.markdown("<div class='error-message'>Errors found during assembly:</div>", unsafe_allow_html=True)
                 for line in binary_lines:
-                    st.text(line)
+                    st.markdown(f"<div class='error-message'>{line}</div>", unsafe_allow_html=True)
             else:
                 binary_content = '\n'.join(binary_lines)
                 
@@ -394,3 +393,4 @@ with tab2:
                 
                 st.success("Assembly successful! Click the button above to download the binary file.")
                 st.code(binary_content, language="text")
+               
