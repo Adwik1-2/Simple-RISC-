@@ -172,16 +172,18 @@ def parse_instruction(line1, address, labels_dict):
             return f"Error: Unexpected operands for '{instr}' in line: {line}"
         # Handle labels in branch instructions
         if parts[1] in labels_dict:
-            offset = labels_dict[parts[1]] - address
+            offset = int(labels_dict[parts[1]] - address)
+            if offset < 0:
+                offset = (1 << 27) + offset
             return f"{opcode}{offset:027b}"
         else:
             try:
                 offset = int(parts[1])
-                return f"{opcode}{offset:027b}"
+                return f"{opcode}{offset:27b}"
             except ValueError:
                 return f"Error: Label '{parts[1]}' not found for branch instruction"
 
-    if instr in ["cmp", "not", "mov"]:
+    if instr is "cmp":
         if len(parts) < 3:
             return f"Error: Missing operands for '{instr}' in line: {line}"
         elif len(parts) > 3:
@@ -205,6 +207,38 @@ def parse_instruction(line1, address, labels_dict):
                 return f"{opcode}10000{rd:04b}10{imm_val:016b}"
             
             return f"{opcode}10000{rd:04b}00{imm_val:016b}"
+
+
+    if instr in ["not", "mov"]:
+        if len(parts) < 3:
+            return f"Error: Missing operands for '{instr}' in line: {line}"
+        elif len(parts) > 3:
+            return f"Error: Unexpected operands for '{instr}' in line: {line}"
+        
+        if parts[1] not in registers:
+            return f"Error: Invalid register(s) in '{instr}' in line: {line}"
+        
+        rd = registers[parts[1]]
+        if parts[2] in registers:
+            rs = registers[parts[2]]
+            return f"{opcode}0{rd:04b}0000{rs:04b}".ljust(32, '0')
+        else:
+            try:
+                imm_val = int(parts[2])
+            except ValueError:
+                return f"Error: Invalid immediate value '{parts[2]}' for '{instr}' in line: {line}"
+            if modifier=='u':
+                return f"{opcode}1{rd:04b}000001{imm_val:016b}"
+            elif modifier=='h':
+                return f"{opcode}1{rd:04b}000010{imm_val:016b}"
+            
+            return f"{opcode}1{rd:04b}000000{imm_val:016b}"
+
+
+
+
+
+
 
     if instr in ["ld", "st"]:
         if len(parts) < 3:
