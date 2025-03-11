@@ -1,3 +1,4 @@
+
 import streamlit as st
 import re
 import tempfile
@@ -111,6 +112,7 @@ opcode_map = {
     "st": "01111", "beq": "10000", "bgt": "10001", "b": "10010", "call": "10011",
     "ret": "10100", "hlt": "11111",
 }
+registers = {f"r{i}": i for i in range(16)}  # r0 to r15 mapped dynamically
 
 def parse_instruction(line1, address, labels_dict):
     if ':' in line1:
@@ -137,7 +139,7 @@ def parse_instruction(line1, address, labels_dict):
         return f"Error: Unknown instruction '{instr}' in line: {line}"
 
     opcode = opcode_map[base_instr]
-    registers = {f"r{i}": i for i in range(16)}  # r0 to r15 mapped dynamically
+    
 
     # Ensure every return path provides a string
     if base_instr in ("add", "sub", "mul", "div", "mod", "and", "or", "lsl", "lsr", "asr"):
@@ -156,6 +158,8 @@ def parse_instruction(line1, address, labels_dict):
         else:
             try:
                 imm_val = int(parts[3])
+                if imm_val < 0:
+                    imm_val = (1 << 16) + imm_val
             except ValueError:
                 return f"Error: Invalid immediate value '{parts[3]}' for '{instr}' in line: {line}"
             if modifier=='u':
@@ -204,6 +208,8 @@ def parse_instruction(line1, address, labels_dict):
         else:
             try:
                 imm_val = int(parts[2])
+                if imm_val < 0:
+                    imm_val = (1 << 16) + imm_val
             except ValueError:
                 return f"Error: Invalid immediate value '{parts[2]}' for '{instr}' in line: {line}"
             if modifier=='u':
@@ -230,6 +236,8 @@ def parse_instruction(line1, address, labels_dict):
         else:
             try:
                 imm_val = int(parts[2])
+                if imm_val < 0:
+                    imm_val = (1 << 16) + imm_val
             except ValueError:
                 return f"Error: Invalid immediate value '{parts[2]}' for '{instr}' in line: {line}"
             if modifier=='u':
@@ -240,9 +248,10 @@ def parse_instruction(line1, address, labels_dict):
             return f"{opcode}1{rd:04b}000000{imm_val:016b}"
 
     if instr in ["ld", "st"]:
+       
         if len(parts) < 3:
             return f"Error: Missing operands for '{instr}' in line: {line}"
-        elif len(parts) > 3:
+        elif len(parts) > 4:
             return f"Error: Unexpected operands for '{instr}' in line: {line}"
         if parts[1] not in registers:
             return f"Error: Invalid register(s) in '{instr}' in line: {line}"
@@ -251,16 +260,23 @@ def parse_instruction(line1, address, labels_dict):
         rs2 = parts[2]
         if rs2.startswith("["):
             a = rs2.find("[")
-            b = rs2.find("]")
-            temp = rs2[a+1:b]
-            new_parts = [x.strip() for x in re.split(r"[\s,]+", temp) if x]
-            if new_parts[0] not in registers:
+            
+            temp = rs2[a+1:]
+            
+            if temp not in registers:
                 return f"Error: Invalid register(s) in '{instr}' in line: {line}"
-            rss1 = registers[new_parts[0]]
-            if new_parts[1] in registers:
-                return f"{opcode}0{rd:04b}{rss1:04b}{registers[new_parts[1]]:04b}".ljust(32, '0')
+            rss1 = registers[temp]
+
+            rs3=parts[3]
+            b=rs3.find("]")
+            temp2=rs3[:b]
+            if temp2 in registers:
+                return f"{opcode}0{rd:04b}{rss1:04b}{registers[temp2]:04b}".ljust(32, '0')
             else:
-                return f"{opcode}1{rd:04b}{rss1:04b}{int(new_parts[1]):04b}".ljust(32, '0')
+                imm_val = int(temp2)
+                if imm_val < 0:
+                    imm_val = (1 << 4) + imm_val
+                return f"{opcode}1{rd:04b}{rss1:04b}{imm_val:04b}".ljust(32, '0')    
         else:
             a = rs2.find("[")
             b = rs2.find("]")
@@ -273,7 +289,10 @@ def parse_instruction(line1, address, labels_dict):
             if rss1 in registers:
                 return f"{opcode}0{rd:04b}{rss2:04b}{registers[rss1]:04b}".ljust(32, '0')
             else:
-                return f"{opcode}1{rd:04b}{rss2:04b}{int(rss1):04b}".ljust(32, '0')
+                imm_val = int(rss1)
+                if imm_val < 0:
+                    imm_val = (1 << 4) + imm_val
+                return f"{opcode}1{rd:04b}{rss2:04b}{imm_val:04b}".ljust(32, '0')
     return f"Error: Unknown instruction '{instr}' in line: {line}"  # Ensure error return
 
 def assemble_from_string(asm_code):
