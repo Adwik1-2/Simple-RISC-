@@ -192,7 +192,7 @@ def parse_instruction(line1, address, labels_dict):
             except ValueError:
                 return f"Error: Label '{parts[1]}' not found for branch instruction"
 
-    if instr is "cmp":
+    if instr == "cmp":
         if len(parts) < 3:
             return f"Error: Missing operands for '{instr}' in line: {line}"
         elif len(parts) > 3:
