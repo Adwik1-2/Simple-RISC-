@@ -154,7 +154,10 @@ def parse_instruction(line1, address, labels_dict):
         rs1 = registers[parts[2]]
         if parts[3] in registers:
             rs2 = registers[parts[3]]
-            return f"{opcode}0{rd:04b}{rs1:04b}{rs2:04b}".ljust(32, '0')
+            if (modifier == ''):
+                return f"{opcode}0{rd:04b}{rs1:04b}{rs2:04b}".ljust(32, '0')
+            else:
+                return f"Error: Unexpected operands for instruction '{instr}' in line: {line}"
         else:
             try:
                 imm_val = int(parts[3])
@@ -192,7 +195,7 @@ def parse_instruction(line1, address, labels_dict):
             except ValueError:
                 return f"Error: Label '{parts[1]}' not found for branch instruction"
 
-    if instr == "cmp":
+    if base_instr == "cmp":
         if len(parts) < 3:
             return f"Error: Missing operands for '{instr}' in line: {line}"
         elif len(parts) > 3:
@@ -204,7 +207,10 @@ def parse_instruction(line1, address, labels_dict):
         rd = registers[parts[1]]
         if parts[2] in registers:
             rs = registers[parts[2]]
-            return f"{opcode}00000{rd:04b}{rs:04b}".ljust(32, '0')
+            if (modifier == '') :
+                return f"{opcode}00000{rd:04b}{rs:04b}".ljust(32, '0')
+            else:
+                return f"Error: Unexpected operands for '{instr}' in line: {line}"
         else:
             try:
                 imm_val = int(parts[2])
@@ -212,15 +218,15 @@ def parse_instruction(line1, address, labels_dict):
                     imm_val = (1 << 16) + imm_val
             except ValueError:
                 return f"Error: Invalid immediate value '{parts[2]}' for '{instr}' in line: {line}"
-            if modifier=='u':
+            if (modifier=='u'):
                 return f"{opcode}10000{rd:04b}01{imm_val:016b}"
-            elif modifier=='h':
+            elif (modifier=='h'):
                 return f"{opcode}10000{rd:04b}10{imm_val:016b}"
             
             return f"{opcode}10000{rd:04b}00{imm_val:016b}"
 
 
-    if instr in ["not", "mov"]:
+    if base_instr in ["not", "mov"]:
         if len(parts) < 3:
             return f"Error: Missing operands for '{instr}' in line: {line}"
         elif len(parts) > 3:
@@ -232,7 +238,10 @@ def parse_instruction(line1, address, labels_dict):
         rd = registers[parts[1]]
         if parts[2] in registers:
             rs = registers[parts[2]]
-            return f"{opcode}0{rd:04b}0000{rs:04b}".ljust(32, '0')
+            if (modifier == ''):
+                return f"{opcode}0{rd:04b}0000{rs:04b}".ljust(32, '0')
+            else:
+                return f"Error: Unexpected operands for '{instr}' in line: {line}"
         else:
             try:
                 imm_val = int(parts[2])
@@ -240,9 +249,9 @@ def parse_instruction(line1, address, labels_dict):
                     imm_val = (1 << 16) + imm_val
             except ValueError:
                 return f"Error: Invalid immediate value '{parts[2]}' for '{instr}' in line: {line}"
-            if modifier=='u':
+            if (modifier=='u'):
                 return f"{opcode}1{rd:04b}000001{imm_val:016b}"
-            elif modifier=='h':
+            elif (modifier=='h'):
                 return f"{opcode}1{rd:04b}000010{imm_val:016b}"
             
             return f"{opcode}1{rd:04b}000000{imm_val:016b}"
